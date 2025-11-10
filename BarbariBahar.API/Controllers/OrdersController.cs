@@ -13,6 +13,7 @@ using BarbariBahar.API.Enums;
 using BarbariBahar.API.Models;
 using BarbariBahar.API.Services.Interfaces;
 using Newtonsoft.Json;
+using BarbariBahar.API.DTOs.Admin;
 
 namespace BarbariBahar.API.Controllers
 {
@@ -29,7 +30,7 @@ namespace BarbariBahar.API.Controllers
             _pricingService = pricingService;
         }
 
-        // ثبت سفارش جدید
+        // POST: api/orders
         [HttpPost]
         public async Task<ActionResult<ApiResponse<Order>>> CreateOrder([FromBody] CreateOrderDto dto)
         {
@@ -44,21 +45,15 @@ namespace BarbariBahar.API.Controllers
                     DistanceKm = dto.DistanceKm,
                     EstimatedDuration = dto.EstimatedDuration,
                     Status = OrderStatus.PENDING,
-
-                    // آدرس‌ها (ذخیره به صورت JSON)
                     OriginAddressJson = JsonConvert.SerializeObject(dto.OriginAddress),
                     DestinationAddressJson = JsonConvert.SerializeObject(dto.DestinationAddress),
                     StopsJson = dto.Stops != null ? JsonConvert.SerializeObject(dto.Stops) : null,
-
-                    // جزئیات
                     DetailsJson = JsonConvert.SerializeObject(dto.Details),
                     CustomerNote = dto.CustomerNote
                 };
 
-                // محاسبه قیمت
                 order.EstimatedPrice = await _pricingService.CalculateOrderPriceAsync(dto);
 
-                // اگر کاربر لاگین کرده
                 if (User.Identity?.IsAuthenticated == true)
                 {
                     var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -71,7 +66,6 @@ namespace BarbariBahar.API.Controllers
                 await _context.Orders.AddAsync(order);
                 await _context.SaveChangesAsync();
 
-                // اضافه کردن آیتم‌ها
                 if (dto.Items != null && dto.Items.Any())
                 {
                     foreach (var itemDto in dto.Items)
@@ -92,7 +86,6 @@ namespace BarbariBahar.API.Controllers
                     }
                 }
 
-                // اضافه کردن سرویس بسته‌بندی
                 if (dto.PackingService != null)
                 {
                     var packingService = new PackingService
@@ -110,7 +103,6 @@ namespace BarbariBahar.API.Controllers
                     await _context.PackingServices.AddAsync(packingService);
                 }
 
-                // اضافه کردن جزئیات مکانی
                 if (dto.LocationDetails != null)
                 {
                     var locationDetails = new LocationDetails
@@ -132,59 +124,115 @@ namespace BarbariBahar.API.Controllers
             }
             catch (Exception ex)
             {
-                // In a real scenario, log the exception
                 return BadRequest(ApiResponse<Order>.ErrorResponse(ex.Message));
             }
         }
 
-        // دریافت لیست سفارشات کاربر
+        // GET: api/orders/my-orders
         [Authorize(Roles = "CUSTOMER")]
         [HttpGet("my-orders")]
         public async Task<ActionResult<ApiResponse<List<Order>>>> GetMyOrders()
         {
-            try
-            {
-                var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-
-                var orders = await _context.Orders
-                    .Where(o => o.CustomerId == userId)
-                    .Include(o => o.ServiceCategory)
-                    .Include(o => o.Items)
-                    .OrderByDescending(o => o.CreatedAt)
-                    .ToListAsync();
-
-                return Ok(ApiResponse<List<Order>>.SuccessResponse(orders));
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(ApiResponse<List<Order>>.ErrorResponse(ex.Message));
-            }
+            var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+            var orders = await _context.Orders
+                .Where(o => o.CustomerId == userId)
+                .Include(o => o.ServiceCategory)
+                .OrderByDescending(o => o.CreatedAt)
+                .ToListAsync();
+            return Ok(ApiResponse<List<Order>>.SuccessResponse(orders));
         }
 
-        // دریافت جزئیات سفارش
+        // GET: api/orders/{id}
+        [Authorize]
         [HttpGet("{id}")]
         public async Task<ActionResult<ApiResponse<Order>>> GetOrderById(Guid id)
         {
-            try
-            {
-                var order = await _context.Orders
-                    .Include(o => o.ServiceCategory)
-                    .Include(o => o.Items).ThenInclude(i => i.CatalogItem)
-                    .Include(o => o.PackingService)
-                    .Include(o => o.LocationDetails)
-                    .Include(o => o.DriverAssignment).ThenInclude(da => da.Driver).ThenInclude(d => d.User)
-                    .Include(o => o.Payment)
-                    .FirstOrDefaultAsync(o => o.Id == id);
+            var order = await _context.Orders
+                .Include(o => o.ServiceCategory)
+                .Include(o => o.DriverAssignment).ThenInclude(da => da.Driver).ThenInclude(d => d.User)
+                .FirstOrDefaultAsync(o => o.Id == id);
 
-                if (order == null)
-                    return NotFound(ApiResponse<Order>.ErrorResponse("سفارش یافت نشد"));
+            if (order == null)
+                return NotFound(ApiResponse<Order>.ErrorResponse("سفارش یافت نشد"));
 
-                return Ok(ApiResponse<Order>.SuccessResponse(order));
-            }
-            catch (Exception ex)
+            var currentUserId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+            if (User.IsInRole(UserRole.CUSTOMER.ToString()) && order.CustomerId != currentUserId)
             {
-                return BadRequest(ApiResponse<Order>.ErrorResponse(ex.Message));
+                return Forbid();
             }
+            if (User.IsInRole(UserRole.DRIVER.ToString()) && order.DriverId != currentUserId)
+            {
+                return Forbid();
+            }
+
+            return Ok(ApiResponse<Order>.SuccessResponse(order));
+        }
+
+        // POST: api/orders/{id}/assign-driver
+        [Authorize(Roles = "ADMIN")]
+        [HttpPost("{id}/assign-driver")]
+        public async Task<ActionResult<ApiResponse<string>>> AssignDriver(Guid id, [FromBody] AssignDriverDto dto)
+        {
+            var order = await _context.Orders.FindAsync(id);
+            if (order == null)
+            {
+                return NotFound(ApiResponse<string>.ErrorResponse("سفارش یافت نشد."));
+            }
+
+            var driver = await _context.Drivers.FindAsync(dto.DriverId);
+            if (driver == null)
+            {
+                return NotFound(ApiResponse<string>.ErrorResponse("راننده یافت نشد."));
+            }
+
+            order.DriverId = dto.DriverId;
+            order.Status = OrderStatus.DRIVER_ASSIGNED;
+
+            var assignment = new DriverAssignment
+            {
+                OrderId = order.Id,
+                DriverId = driver.UserId,
+                Commission = driver.CommissionPercentage,
+                AssignedAt = DateTime.UtcNow
+            };
+
+            await _context.DriverAssignments.AddAsync(assignment);
+            _context.Orders.Update(order);
+            await _context.SaveChangesAsync();
+
+            return Ok(ApiResponse<string>.SuccessResponse(null, "راننده با موفقیت به سفارش تخصیص داده شد."));
+        }
+
+        // PATCH: api/orders/{id}/status
+        [Authorize(Roles = "ADMIN,DRIVER")]
+        [HttpPatch("{id}/status")]
+        public async Task<ActionResult<ApiResponse<string>>> UpdateOrderStatus(Guid id, [FromBody] UpdateOrderStatusDto dto)
+        {
+            var order = await _context.Orders.FindAsync(id);
+            if (order == null)
+            {
+                return NotFound(ApiResponse<string>.ErrorResponse("سفارش یافت نشد."));
+            }
+
+            order.Status = dto.Status;
+
+            switch (dto.Status)
+            {
+                case OrderStatus.CONFIRMED:
+                    order.ConfirmedAt = DateTime.UtcNow;
+                    break;
+                case OrderStatus.DRIVER_EN_ROUTE_TO_ORIGIN:
+                    order.StartedAt ??= DateTime.UtcNow;
+                    break;
+                case OrderStatus.COMPLETED:
+                    order.CompletedAt = DateTime.UtcNow;
+                    break;
+            }
+
+            _context.Orders.Update(order);
+            await _context.SaveChangesAsync();
+
+            return Ok(ApiResponse<string>.SuccessResponse(null, "وضعیت سفارش با موفقیت به‌روزرسانی شد."));
         }
     }
 }
