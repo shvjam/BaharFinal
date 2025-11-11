@@ -76,6 +76,9 @@ builder.Services.AddCors(options =>
     });
 });
 
+// AutoMapper
+builder.Services.AddAutoMapper(Assembly.GetExecutingAssembly());
+
 // FluentValidation
 builder.Services.AddControllers()
     .AddFluentValidation(fv => fv.RegisterValidatorsFromAssembly(Assembly.GetExecutingAssembly()))

@@ -21,22 +21,26 @@ namespace BarbariBahar.API.Controllers
         }
 
         [HttpGet("stats")]
-        public async Task<ActionResult<ApiResponse<object>>> GetDashboardStats()
+        public async Task<ActionResult<ApiResponse<DashboardStatsDto>>> GetDashboardStats()
         {
-            var totalOrders = await _context.Orders.CountAsync();
-            var totalRevenue = await _context.Orders.Where(o => o.FinalPrice.HasValue).SumAsync(o => o.FinalPrice.Value);
-            var totalCustomers = await _context.Users.CountAsync(u => u.Role == Enums.UserRole.CUSTOMER);
-            var activeDrivers = await _context.Drivers.CountAsync(d => d.IsActive && d.IsOnline);
-
-            var stats = new
+            var stats = new DashboardStatsDto
             {
-                TotalOrders = totalOrders,
-                TotalRevenue = totalRevenue,
-                TotalCustomers = totalCustomers,
-                ActiveDrivers = activeDrivers
+                TotalOrders = await _context.Orders.CountAsync(),
+                ActiveOrders = await _context.Orders.CountAsync(o =>
+                    o.Status != OrderStatus.COMPLETED && o.Status != OrderStatus.CANCELLED),
+                CompletedOrders = await _context.Orders.CountAsync(o => o.Status == OrderStatus.COMPLETED),
+                TotalRevenue = await _context.Payments
+                    .Where(p => p.Status == PaymentStatus.PAID)
+                    .SumAsync(p => p.Amount),
+                PendingPayments = await _context.Payments.CountAsync(p => p.Status == PaymentStatus.PENDING),
+                ActiveDrivers = await _context.Drivers.CountAsync(d => d.IsActive && d.IsOnline),
+                TotalCustomers = await _context.Users.CountAsync(u => u.Role == UserRole.CUSTOMER),
+                AvgRating = await _context.Orders.Where(o => o.Rating.HasValue && o.Rating > 0).AnyAsync()
+                    ? await _context.Orders.Where(o => o.Rating.HasValue && o.Rating > 0).AverageAsync(o => o.Rating.Value)
+                    : 0
             };
 
-            return Ok(ApiResponse<object>.SuccessResponse(stats));
+            return Ok(ApiResponse<DashboardStatsDto>.SuccessResponse(stats));
         }
     }
 }

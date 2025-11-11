@@ -18,10 +18,12 @@ namespace BarbariBahar.API.Controllers
     public class AdminController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly IMapper _mapper;
 
-        public AdminController(AppDbContext context)
+        public AdminController(AppDbContext context, IMapper mapper)
         {
             _context = context;
+            _mapper = mapper;
         }
 
         // GET: api/admin/users
@@ -34,15 +36,15 @@ namespace BarbariBahar.API.Controllers
 
         // GET: api/admin/drivers
         [HttpGet("drivers")]
-        public async Task<ActionResult<ApiResponse<List<DriverDetailsDto>>>> GetAllDrivers()
+        public async Task<ActionResult<ApiResponse<List<DriverResponseDto>>>> GetAllDrivers()
         {
             var drivers = await _context.Drivers
                 .Include(d => d.User)
                 .OrderByDescending(d => d.User.CreatedAt)
-                .Select(d => DriverDetailsDto.FromDriver(d))
                 .ToListAsync();
 
-            return Ok(ApiResponse<List<DriverDetailsDto>>.SuccessResponse(drivers));
+            var driverDtos = _mapper.Map<List<DriverResponseDto>>(drivers);
+            return Ok(ApiResponse<List<DriverResponseDto>>.SuccessResponse(driverDtos));
         }
 
         // POST: api/admin/drivers/{id}/verify
@@ -89,7 +91,7 @@ namespace BarbariBahar.API.Controllers
         }
 
         [HttpGet("drivers/{driverId}")]
-        public async Task<ActionResult<ApiResponse<Driver>>> GetDriverById(Guid driverId)
+        public async Task<ActionResult<ApiResponse<DriverResponseDto>>> GetDriverById(Guid driverId)
         {
             // Note: driverId is the same as userId
             var driver = await _context.Drivers
@@ -98,10 +100,11 @@ namespace BarbariBahar.API.Controllers
 
             if (driver == null)
             {
-                return NotFound(ApiResponse<Driver>.ErrorResponse("راننده یافت نشد."));
+                return NotFound(ApiResponse<DriverResponseDto>.ErrorResponse("راننده یافت نشد."));
             }
 
-            return Ok(ApiResponse<Driver>.SuccessResponse(driver));
+            var driverDto = _mapper.Map<DriverResponseDto>(driver);
+            return Ok(ApiResponse<DriverResponseDto>.SuccessResponse(driverDto));
         }
 
         [HttpPut("users/{userId}")]
@@ -139,6 +142,47 @@ namespace BarbariBahar.API.Controllers
             await _context.SaveChangesAsync();
 
             return Ok(ApiResponse<Driver>.SuccessResponse(driver, "اطلاعات راننده با موفقیت به‌روزرسانی شد."));
+        }
+
+        [HttpGet("orders")]
+        public async Task<ActionResult<ApiResponse<PaginatedResponse<OrderResponseDto>>>> GetAllOrders([FromQuery] GetOrdersQueryDto query)
+        {
+            var queryable = _context.Orders
+                .Include(o => o.ServiceCategory)
+                .AsQueryable();
+
+            // Filtering
+            if (query.Status.HasValue)
+            {
+                queryable = queryable.Where(o => o.Status == query.Status.Value);
+            }
+            if (!string.IsNullOrEmpty(query.CustomerPhone))
+            {
+                queryable = queryable.Where(o => o.CustomerPhone.Contains(query.CustomerPhone));
+            }
+
+            // Get total count for pagination
+            var totalCount = await queryable.CountAsync();
+
+            // Pagination
+            var orders = await queryable
+                .OrderByDescending(o => o.CreatedAt)
+                .Skip((query.Page - 1) * query.PageSize)
+                .Take(query.PageSize)
+                .ToListAsync();
+
+            var orderDtos = _mapper.Map<List<OrderResponseDto>>(orders);
+
+            var paginatedResponse = new PaginatedResponse<OrderResponseDto>
+            {
+                Items = orderDtos,
+                Total = totalCount,
+                Page = query.Page,
+                PageSize = query.PageSize,
+                TotalPages = (int)Math.Ceiling(totalCount / (double)query.PageSize)
+            };
+
+            return Ok(ApiResponse<PaginatedResponse<OrderResponseDto>>.SuccessResponse(paginatedResponse));
         }
     }
 }

@@ -24,12 +24,14 @@ namespace BarbariBahar.API.Controllers
         private readonly AppDbContext _context;
         private readonly IPricingService _pricingService;
         private readonly INotificationService _notificationService;
+        private readonly IMapper _mapper;
 
-        public OrdersController(AppDbContext context, IPricingService pricingService, INotificationService notificationService)
+        public OrdersController(AppDbContext context, IPricingService pricingService, INotificationService notificationService, IMapper mapper)
         {
             _context = context;
             _pricingService = pricingService;
             _notificationService = notificationService;
+            _mapper = mapper;
         }
 
         // POST: api/orders
@@ -130,7 +132,7 @@ namespace BarbariBahar.API.Controllers
         // GET: api/orders/my-orders
         [Authorize(Roles = "CUSTOMER")]
         [HttpGet("my-orders")]
-        public async Task<ActionResult<ApiResponse<List<Order>>>> GetMyOrders()
+        public async Task<ActionResult<ApiResponse<List<OrderResponseDto>>>> GetMyOrders()
         {
             var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
             var orders = await _context.Orders
@@ -140,13 +142,14 @@ namespace BarbariBahar.API.Controllers
                 .OrderByDescending(o => o.CreatedAt)
                 .ToListAsync();
 
-            return Ok(ApiResponse<List<Order>>.SuccessResponse(orders));
+            var orderDtos = _mapper.Map<List<OrderResponseDto>>(orders);
+            return Ok(ApiResponse<List<OrderResponseDto>>.SuccessResponse(orderDtos));
         }
 
         // GET: api/orders/{id}
         [Authorize]
         [HttpGet("{id}")]
-        public async Task<ActionResult<ApiResponse<Order>>> GetOrderById(Guid id)
+        public async Task<ActionResult<ApiResponse<OrderResponseDto>>> GetOrderById(Guid id)
         {
             var order = await _context.Orders
                 .Include(o => o.ServiceCategory)
@@ -158,9 +161,10 @@ namespace BarbariBahar.API.Controllers
                 .FirstOrDefaultAsync(o => o.Id == id);
 
             if (order == null)
-                return NotFound(ApiResponse<Order>.ErrorResponse("سفارش یافت نشد"));
+                return NotFound(ApiResponse<OrderResponseDto>.ErrorResponse("سفارش یافت نشد"));
 
-            return Ok(ApiResponse<Order>.SuccessResponse(order));
+            var orderDto = _mapper.Map<OrderResponseDto>(order);
+            return Ok(ApiResponse<OrderResponseDto>.SuccessResponse(orderDto));
         }
 
         // POST: api/orders/{id}/assign-driver
