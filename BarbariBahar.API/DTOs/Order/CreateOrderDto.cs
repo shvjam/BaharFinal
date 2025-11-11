@@ -71,7 +71,7 @@ namespace BarbariBahar.API.DTOs.Order
 
     public class CreatePackingServiceDto
     {
-        public string Type { get; set; } = string.Empty;
+        public PackingType Type { get; set; }
         public int MaleWorkers { get; set; }
         public int FemaleWorkers { get; set; }
         public int EstimatedHours { get; set; }

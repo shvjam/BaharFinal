@@ -7,19 +7,20 @@ using System.Text;
 using BarbariBahar.API.Data;
 using BarbariBahar.API.Helpers;
 using BarbariBahar.API.Hubs;
-using BarbariBahar.API.Middleware; // Add this using
+using BarbariBahar.API.Middleware;
 using BarbariBahar.API.Models;
 using BarbariBahar.API.Services.Implementations;
 using BarbariBahar.API.Services.Interfaces;
+using FluentValidation.AspNetCore;
+using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Add services to the container.
+
 // Database
-// builder.Services.AddDbContext<AppDbContext>(options =>
-//     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("SqliteConnection")));
-
 
 // JWT Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -28,8 +29,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:SecretKey"]!)),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:SecretKey"]!)),
             ValidateIssuer = true,
             ValidIssuer = builder.Configuration["Jwt:Issuer"],
             ValidateAudience = true,
@@ -37,7 +37,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ClockSkew = TimeSpan.Zero
         };
 
-        // For SignalR
         options.Events = new JwtBearerEvents
         {
             OnMessageReceived = context =>
@@ -60,6 +59,7 @@ builder.Services.AddScoped<IOtpService, OtpService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IFileService, FileService>();
 builder.Services.AddScoped<IPricingService, PricingService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 
 // SignalR
 builder.Services.AddSignalR();
@@ -72,23 +72,25 @@ builder.Services.AddCors(options =>
         policy.WithOrigins("http://localhost:5173", "http://localhost:3000")
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .AllowCredentials(); // For SignalR
+            .AllowCredentials();
     });
 });
 
+// FluentValidation
 builder.Services.AddControllers()
+    .AddFluentValidation(fv => fv.RegisterValidatorsFromAssembly(Assembly.GetExecutingAssembly()))
     .AddNewtonsoftJson(options =>
     {
         options.SerializerSettings.ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore;
     });
+
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "Barbari Bahar API", Version = "v1" });
 
-    // JWT in Swagger
-    c.AddSecurityDefinition("Bearer", new ApiKeyScheme
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Description = "JWT Authorization header using the Bearer scheme. Example: \"Bearer {token}\"",
         Name = "Authorization",
@@ -119,12 +121,10 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    context.Database.Migrate(); // Apply migrations
+    context.Database.Migrate();
 
-    // If the database is empty
     if (!context.ServiceCategories.Any())
     {
-        // Services
         var services = new[]
         {
             new ServiceCategory { Name = "اسباب‌کشی منزل", Slug = "home-moving", Description = "حمل کامل اثاثیه منزل", Order = 1, IsActive = true },
@@ -133,7 +133,6 @@ using (var scope = app.Services.CreateScope())
         };
         context.ServiceCategories.AddRange(services);
 
-        // Catalog
         var catalogCategory = new CatalogCategory { Name = "لوازم سنگین", Slug = "heavy-items", Order = 1 };
         context.CatalogCategories.Add(catalogCategory);
         context.SaveChanges();
@@ -146,7 +145,6 @@ using (var scope = app.Services.CreateScope())
         };
         context.CatalogItems.AddRange(catalogItems);
 
-        // Pricing
         var pricing = new PricingConfig
         {
             Name = "تعرفه پیش‌فرض",
@@ -176,18 +174,12 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
-// Static files (for Uploads)
 app.UseStaticFiles();
-
 app.UseCors("AllowReactApp");
-
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
-
-// SignalR Hubs
 app.MapHub<OrderTrackingHub>("/hubs/order-tracking");
+app.MapHub<NotificationHub>("/hubs/notifications");
 
 app.Run();

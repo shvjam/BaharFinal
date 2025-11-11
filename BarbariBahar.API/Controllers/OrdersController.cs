@@ -23,109 +23,104 @@ namespace BarbariBahar.API.Controllers
     {
         private readonly AppDbContext _context;
         private readonly IPricingService _pricingService;
+        private readonly INotificationService _notificationService;
 
-        public OrdersController(AppDbContext context, IPricingService pricingService)
+        public OrdersController(AppDbContext context, IPricingService pricingService, INotificationService notificationService)
         {
             _context = context;
             _pricingService = pricingService;
+            _notificationService = notificationService;
         }
 
         // POST: api/orders
         [HttpPost]
         public async Task<ActionResult<ApiResponse<Order>>> CreateOrder([FromBody] CreateOrderDto dto)
         {
-            try
+            var order = new Order
             {
-                var order = new Order
-                {
-                    CustomerPhone = dto.CustomerPhone,
-                    CustomerName = dto.CustomerName,
-                    ServiceCategoryId = dto.ServiceCategoryId,
-                    PreferredDateTime = dto.PreferredDateTime,
-                    DistanceKm = dto.DistanceKm,
-                    EstimatedDuration = dto.EstimatedDuration,
-                    Status = OrderStatus.PENDING,
-                    OriginAddressJson = JsonConvert.SerializeObject(dto.OriginAddress),
-                    DestinationAddressJson = JsonConvert.SerializeObject(dto.DestinationAddress),
-                    StopsJson = dto.Stops != null ? JsonConvert.SerializeObject(dto.Stops) : null,
-                    DetailsJson = JsonConvert.SerializeObject(dto.Details),
-                    CustomerNote = dto.CustomerNote
-                };
+                CustomerPhone = dto.CustomerPhone,
+                CustomerName = dto.CustomerName,
+                ServiceCategoryId = dto.ServiceCategoryId,
+                PreferredDateTime = dto.PreferredDateTime,
+                DistanceKm = dto.DistanceKm,
+                EstimatedDuration = dto.EstimatedDuration,
+                Status = OrderStatus.PENDING,
+                OriginAddressJson = JsonConvert.SerializeObject(dto.OriginAddress),
+                DestinationAddressJson = JsonConvert.SerializeObject(dto.DestinationAddress),
+                StopsJson = dto.Stops != null ? JsonConvert.SerializeObject(dto.Stops) : null,
+                DetailsJson = JsonConvert.SerializeObject(dto.Details),
+                CustomerNote = dto.CustomerNote
+            };
 
-                order.EstimatedPrice = await _pricingService.CalculateOrderPriceAsync(dto);
+            order.EstimatedPrice = await _pricingService.CalculateOrderPriceAsync(dto);
 
-                if (User.Identity?.IsAuthenticated == true)
+            if (User.Identity?.IsAuthenticated == true)
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (userId != null)
                 {
-                    var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                    if (userId != null)
-                    {
-                        order.CustomerId = Guid.Parse(userId);
-                    }
+                    order.CustomerId = Guid.Parse(userId);
                 }
+            }
 
-                await _context.Orders.AddAsync(order);
-                await _context.SaveChangesAsync();
+            await _context.Orders.AddAsync(order);
+            await _context.SaveChangesAsync();
 
-                if (dto.Items != null && dto.Items.Any())
+            if (dto.Items != null && dto.Items.Any())
+            {
+                foreach (var itemDto in dto.Items)
                 {
-                    foreach (var itemDto in dto.Items)
+                    var catalogItem = await _context.CatalogItems.FindAsync(itemDto.CatalogItemId);
+                    if (catalogItem != null)
                     {
-                        var catalogItem = await _context.CatalogItems.FindAsync(itemDto.CatalogItemId);
-                        if (catalogItem != null)
+                        var orderItem = new OrderItem
                         {
-                            var orderItem = new OrderItem
-                            {
-                                OrderId = order.Id,
-                                CatalogItemId = itemDto.CatalogItemId,
-                                Quantity = itemDto.Quantity,
-                                UnitPrice = catalogItem.BasePrice,
-                                TotalPrice = catalogItem.BasePrice * itemDto.Quantity
-                            };
-                            await _context.OrderItems.AddAsync(orderItem);
-                        }
+                            OrderId = order.Id,
+                            CatalogItemId = itemDto.CatalogItemId,
+                            Quantity = itemDto.Quantity,
+                            UnitPrice = catalogItem.BasePrice,
+                            TotalPrice = catalogItem.BasePrice * itemDto.Quantity
+                        };
+                        await _context.OrderItems.AddAsync(orderItem);
                     }
                 }
-
-                if (dto.PackingService != null)
-                {
-                    var packingService = new PackingService
-                    {
-                        OrderId = order.Id,
-                        Type = Enum.Parse<PackingType>(dto.PackingService.Type, true),
-                        MaleWorkers = dto.PackingService.MaleWorkers,
-                        FemaleWorkers = dto.PackingService.FemaleWorkers,
-                        EstimatedHours = dto.PackingService.EstimatedHours,
-                        NeedsMaterials = dto.PackingService.NeedsMaterials,
-                        MaterialsMode = dto.PackingService.MaterialsMode,
-                        PackingItemsJson = dto.PackingService.PackingItemsJson,
-                        PackingProductsJson = dto.PackingService.PackingProductsJson
-                    };
-                    await _context.PackingServices.AddAsync(packingService);
-                }
-
-                if (dto.LocationDetails != null)
-                {
-                    var locationDetails = new LocationDetails
-                    {
-                        OrderId = order.Id,
-                        OriginFloor = dto.LocationDetails.OriginFloor,
-                        OriginHasElevator = dto.LocationDetails.OriginHasElevator,
-                        DestinationFloor = dto.LocationDetails.DestinationFloor,
-                        DestinationHasElevator = dto.LocationDetails.DestinationHasElevator,
-                        WalkDistanceMeters = dto.LocationDetails.WalkDistanceMeters,
-                        StopCount = dto.LocationDetails.StopCount
-                    };
-                    await _context.LocationDetails.AddAsync(locationDetails);
-                }
-
-                await _context.SaveChangesAsync();
-
-                return Ok(ApiResponse<Order>.SuccessResponse(order, "سفارش با موفقیت ثبت شد"));
             }
-            catch (Exception ex)
+
+            if (dto.PackingService != null)
             {
-                return BadRequest(ApiResponse<Order>.ErrorResponse(ex.Message));
+                var packingService = new PackingService
+                {
+                    OrderId = order.Id,
+                        Type = dto.PackingService.Type,
+                    MaleWorkers = dto.PackingService.MaleWorkers,
+                    FemaleWorkers = dto.PackingService.FemaleWorkers,
+                    EstimatedHours = dto.PackingService.EstimatedHours,
+                    NeedsMaterials = dto.PackingService.NeedsMaterials,
+                    MaterialsMode = dto.PackingService.MaterialsMode,
+                    PackingItemsJson = dto.PackingService.PackingItemsJson,
+                    PackingProductsJson = dto.PackingService.PackingProductsJson
+                };
+                await _context.PackingServices.AddAsync(packingService);
             }
+
+            if (dto.LocationDetails != null)
+            {
+                var locationDetails = new LocationDetails
+                {
+                    OrderId = order.Id,
+                    OriginFloor = dto.LocationDetails.OriginFloor,
+                    OriginHasElevator = dto.LocationDetails.OriginHasElevator,
+                    DestinationFloor = dto.LocationDetails.DestinationFloor,
+                    DestinationHasElevator = dto.LocationDetails.DestinationHasElevator,
+                    WalkDistanceMeters = dto.LocationDetails.WalkDistanceMeters,
+                    StopCount = dto.LocationDetails.StopCount
+                };
+                await _context.LocationDetails.AddAsync(locationDetails);
+            }
+
+            await _context.SaveChangesAsync();
+
+            return Ok(ApiResponse<Order>.SuccessResponse(order, "سفارش با موفقیت ثبت شد"));
         }
 
         // GET: api/orders/my-orders
@@ -137,8 +132,10 @@ namespace BarbariBahar.API.Controllers
             var orders = await _context.Orders
                 .Where(o => o.CustomerId == userId)
                 .Include(o => o.ServiceCategory)
+                .Include(o => o.Items)
                 .OrderByDescending(o => o.CreatedAt)
                 .ToListAsync();
+
             return Ok(ApiResponse<List<Order>>.SuccessResponse(orders));
         }
 
@@ -149,21 +146,15 @@ namespace BarbariBahar.API.Controllers
         {
             var order = await _context.Orders
                 .Include(o => o.ServiceCategory)
+                .Include(o => o.Items).ThenInclude(i => i.CatalogItem)
+                .Include(o => o.PackingService)
+                .Include(o => o.LocationDetails)
                 .Include(o => o.DriverAssignment).ThenInclude(da => da.Driver).ThenInclude(d => d.User)
+                .Include(o => o.Payment)
                 .FirstOrDefaultAsync(o => o.Id == id);
 
             if (order == null)
                 return NotFound(ApiResponse<Order>.ErrorResponse("سفارش یافت نشد"));
-
-            var currentUserId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-            if (User.IsInRole(UserRole.CUSTOMER.ToString()) && order.CustomerId != currentUserId)
-            {
-                return Forbid();
-            }
-            if (User.IsInRole(UserRole.DRIVER.ToString()) && order.DriverId != currentUserId)
-            {
-                return Forbid();
-            }
 
             return Ok(ApiResponse<Order>.SuccessResponse(order));
         }
@@ -171,36 +162,57 @@ namespace BarbariBahar.API.Controllers
         // POST: api/orders/{id}/assign-driver
         [Authorize(Roles = "ADMIN")]
         [HttpPost("{id}/assign-driver")]
-        public async Task<ActionResult<ApiResponse<string>>> AssignDriver(Guid id, [FromBody] AssignDriverDto dto)
+        public async Task<ActionResult<ApiResponse<DriverAssignment>>> AssignDriver(Guid id, [FromBody] AssignDriverDto dto)
         {
             var order = await _context.Orders.FindAsync(id);
             if (order == null)
             {
-                return NotFound(ApiResponse<string>.ErrorResponse("سفارش یافت نشد."));
+                return NotFound(ApiResponse<DriverAssignment>.ErrorResponse("سفارش یافت نشد."));
             }
 
             var driver = await _context.Drivers.FindAsync(dto.DriverId);
             if (driver == null)
             {
-                return NotFound(ApiResponse<string>.ErrorResponse("راننده یافت نشد."));
+                return NotFound(ApiResponse<DriverAssignment>.ErrorResponse("راننده یافت نشد."));
             }
-
-            order.DriverId = dto.DriverId;
-            order.Status = OrderStatus.DRIVER_ASSIGNED;
 
             var assignment = new DriverAssignment
             {
-                OrderId = order.Id,
-                DriverId = driver.UserId,
+                OrderId = id,
+                DriverId = dto.DriverId,
                 Commission = driver.CommissionPercentage,
-                AssignedAt = DateTime.UtcNow
+                Note = dto.Note,
+                IsActive = true
             };
 
+            order.Status = OrderStatus.DRIVER_ASSIGNED;
+            order.DriverId = dto.DriverId;
+
             await _context.DriverAssignments.AddAsync(assignment);
-            _context.Orders.Update(order);
             await _context.SaveChangesAsync();
 
-            return Ok(ApiResponse<string>.SuccessResponse(null, "راننده با موفقیت به سفارش تخصیص داده شد."));
+            // Notify Driver
+            await _notificationService.SendNotificationAsync(
+                driver.UserId,
+                "INFO",
+                "سفارش جدید",
+                $"یک سفارش جدید به شما اختصاص یافت. لطفاً جهت مشاهده جزئیات و قبول یا رد آن، به پنل خود مراجعه کنید.",
+                new { orderId = order.Id }
+            );
+
+            // Notify Customer
+            if (order.CustomerId.HasValue)
+            {
+                await _notificationService.SendNotificationAsync(
+                    order.CustomerId.Value,
+                    "SUCCESS",
+                    "راننده مشخص شد",
+                    $"راننده سفارش شما مشخص شد. می‌توانید جزئیات راننده را در صفحه سفارش مشاهده کنید.",
+                    new { orderId = order.Id }
+                );
+            }
+
+            return Ok(ApiResponse<DriverAssignment>.SuccessResponse(assignment, "راننده با موفقیت به سفارش اختصاص یافت."));
         }
 
         // PATCH: api/orders/{id}/status
@@ -214,9 +226,35 @@ namespace BarbariBahar.API.Controllers
                 return NotFound(ApiResponse<string>.ErrorResponse("سفارش یافت نشد."));
             }
 
-            order.Status = dto.Status;
+            var currentStatus = order.Status;
+            var newStatus = dto.Status;
 
-            switch (dto.Status)
+            var isValidTransition = (currentStatus, newStatus) switch
+            {
+                (OrderStatus.PENDING, OrderStatus.CONFIRMED) => User.IsInRole("ADMIN"),
+                (OrderStatus.CONFIRMED, OrderStatus.CANCELLED) => true,
+                (OrderStatus.DRIVER_ASSIGNED, OrderStatus.DRIVER_EN_ROUTE_TO_ORIGIN) => true,
+                (OrderStatus.DRIVER_EN_ROUTE_TO_ORIGIN, OrderStatus.PACKING_IN_PROGRESS) => true,
+                (OrderStatus.PACKING_IN_PROGRESS, OrderStatus.LOADING_IN_PROGRESS) => true,
+                (OrderStatus.LOADING_IN_PROGRESS, OrderStatus.IN_TRANSIT) => true,
+                (OrderStatus.IN_TRANSIT, OrderStatus.ARRIVED_AT_DESTINATION) => true,
+                (OrderStatus.ARRIVED_AT_DESTINATION, OrderStatus.COMPLETED) => true,
+                (var status, OrderStatus.CANCELLED) when
+                    status == OrderStatus.PENDING ||
+                    status == OrderStatus.CONFIRMED ||
+                    status == OrderStatus.DRIVER_ASSIGNED
+                    => true,
+                _ => false
+            };
+
+            if (!isValidTransition)
+            {
+                return BadRequest(ApiResponse<string>.ErrorResponse($"تغییر وضعیت از {currentStatus} به {newStatus} مجاز نیست."));
+            }
+
+            order.Status = newStatus;
+
+            switch (newStatus)
             {
                 case OrderStatus.CONFIRMED:
                     order.ConfirmedAt = DateTime.UtcNow;
@@ -227,10 +265,24 @@ namespace BarbariBahar.API.Controllers
                 case OrderStatus.COMPLETED:
                     order.CompletedAt = DateTime.UtcNow;
                     break;
+                case OrderStatus.CANCELLED:
+                    break;
             }
 
             _context.Orders.Update(order);
             await _context.SaveChangesAsync();
+
+            // Notify Customer of status change
+            if (order.CustomerId.HasValue)
+            {
+                await _notificationService.SendNotificationAsync(
+                    order.CustomerId.Value,
+                    "INFO",
+                    "وضعیت سفارش شما تغییر کرد",
+                    $"وضعیت سفارش شما به '{newStatus}' تغییر یافت.",
+                    new { orderId = order.Id, status = newStatus }
+                );
+            }
 
             return Ok(ApiResponse<string>.SuccessResponse(null, "وضعیت سفارش با موفقیت به‌روزرسانی شد."));
         }
