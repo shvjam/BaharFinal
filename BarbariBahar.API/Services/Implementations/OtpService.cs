@@ -2,23 +2,24 @@ using System;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
+using BarbariBahar.API.Configurations;
 using BarbariBahar.API.Services.Interfaces;
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace BarbariBahar.API.Services.Implementations
 {
     public class OtpService : IOtpService
     {
-        private readonly IConfiguration _configuration;
         private readonly HttpClient _httpClient;
         private readonly IMemoryCache _cache;
+        private readonly FarazSmsSettings _smsSettings;
 
-        public OtpService(IConfiguration configuration, HttpClient httpClient, IMemoryCache cache)
+        public OtpService(IHttpClientFactory httpClientFactory, IMemoryCache cache, IOptions<FarazSmsSettings> smsSettings)
         {
-            _configuration = configuration;
-            _httpClient = httpClient;
+            _httpClient = httpClientFactory.CreateClient("FarazSms");
             _cache = cache;
+            _smsSettings = smsSettings.Value;
         }
 
         public Task<string> GenerateOtpAsync(string phoneNumber)
@@ -50,34 +51,36 @@ namespace BarbariBahar.API.Services.Implementations
 
         public async Task SendOtpAsync(string phoneNumber, string otp)
         {
-            // This part remains commented out as per the initial implementation.
-            /*
-            var apiKey = _configuration["FarazSms:ApiKey"];
-            var patternCode = _configuration["FarazSms:PatternCode"];
-            var originator = _configuration["FarazSms:Originator"];
+            // Check if API key is a placeholder
+            if (string.IsNullOrEmpty(_smsSettings.ApiKey) || _smsSettings.ApiKey.StartsWith("YOUR_"))
+            {
+                Console.WriteLine($"[OTP-SIMULATION] SMS service is not configured. Sending OTP {otp} to {phoneNumber}");
+                return; // Do not proceed with the actual API call
+            }
 
             var requestBody = new
             {
-                pattern_code = patternCode,
-                originator = originator,
+                pattern_code = _smsSettings.PatternCode,
+                originator = _smsSettings.Originator,
                 recipient = phoneNumber,
                 values = new { code = otp }
             };
 
-            _httpClient.DefaultRequestHeaders.Add("Authorization", $"AccessKey {apiKey}");
+            var request = new HttpRequestMessage(HttpMethod.Post, "https://api.ippanel.com/v1/messages/patterns/send");
+            request.Content = JsonContent.Create(requestBody);
 
-            var response = await _httpClient.PostAsJsonAsync("https://api.ippanel.com/v1/messages/patterns/send", requestBody);
+            // The API key is added via a delegating handler configured in Program.cs
+
+            var response = await _httpClient.SendAsync(request);
 
             if (!response.IsSuccessStatusCode)
             {
-                Console.WriteLine($"[OTP] Failed to send OTP to {phoneNumber}. Status: {response.StatusCode}");
+                var errorContent = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"[OTP] Failed to send OTP to {phoneNumber}. Status: {response.StatusCode}, Response: {errorContent}");
                 throw new Exception("Failed to send OTP message.");
             }
-            */
 
-            Console.WriteLine($"[OTP] Sending OTP {otp} to {phoneNumber}");
-
-            await Task.CompletedTask;
+            Console.WriteLine($"[OTP] Successfully sent OTP {otp} to {phoneNumber}");
         }
     }
 }

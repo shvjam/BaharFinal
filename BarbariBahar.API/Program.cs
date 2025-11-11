@@ -13,8 +13,13 @@ using BarbariBahar.API.Services.Implementations;
 using BarbariBahar.API.Services.Interfaces;
 using FluentValidation.AspNetCore;
 using System.Reflection;
+using BarbariBahar.API.Configurations;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Configure Settings
+builder.Services.Configure<FarazSmsSettings>(
+    builder.Configuration.GetSection(FarazSmsSettings.SectionName));
 
 // Add services to the container.
 
@@ -53,7 +58,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 // Services
-builder.Services.AddHttpClient<IOtpService, OtpService>();
+builder.Services.AddHttpClient("FarazSms", (serviceProvider, client) =>
+{
+    var smsSettings = serviceProvider.GetRequiredService<IOptions<FarazSmsSettings>>().Value;
+    client.DefaultRequestHeaders.Add("Authorization", $"AccessKey {smsSettings.ApiKey}");
+});
+
 builder.Services.AddScoped<JwtHelper>();
 builder.Services.AddScoped<IOtpService, OtpService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
