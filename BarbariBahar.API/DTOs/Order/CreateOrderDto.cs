@@ -40,6 +40,8 @@ namespace BarbariBahar.API.DTOs.Order
         public CreateLocationDetailsDto? LocationDetails { get; set; }
 
         public string? CustomerNote { get; set; }
+
+        public string? DiscountCode { get; set; }
     }
 
     public class CreateOrderAddressDto

@@ -71,5 +71,74 @@ namespace BarbariBahar.API.Controllers
 
             return Ok(ApiResponse<string>.SuccessResponse(null, "مدارک راننده با موفقیت تأیید شد و حساب کاربری فعال گردید."));
         }
+
+        [HttpGet("users/{userId}")]
+        public async Task<ActionResult<ApiResponse<User>>> GetUserById(Guid userId)
+        {
+            var user = await _context.Users
+                .Include(u => u.Addresses)
+                .Include(u => u.Orders)
+                .FirstOrDefaultAsync(u => u.Id == userId);
+
+            if (user == null)
+            {
+                return NotFound(ApiResponse<User>.ErrorResponse("کاربر یافت نشد."));
+            }
+
+            return Ok(ApiResponse<User>.SuccessResponse(user));
+        }
+
+        [HttpGet("drivers/{driverId}")]
+        public async Task<ActionResult<ApiResponse<Driver>>> GetDriverById(Guid driverId)
+        {
+            // Note: driverId is the same as userId
+            var driver = await _context.Drivers
+                .Include(d => d.User)
+                .FirstOrDefaultAsync(d => d.UserId == driverId);
+
+            if (driver == null)
+            {
+                return NotFound(ApiResponse<Driver>.ErrorResponse("راننده یافت نشد."));
+            }
+
+            return Ok(ApiResponse<Driver>.SuccessResponse(driver));
+        }
+
+        [HttpPut("users/{userId}")]
+        public async Task<ActionResult<ApiResponse<User>>> UpdateUser(Guid userId, [FromBody] UpdateUserByAdminDto dto)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+            {
+                return NotFound(ApiResponse<User>.ErrorResponse("کاربر یافت نشد."));
+            }
+
+            user.Role = dto.Role;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            _context.Users.Update(user);
+            await _context.SaveChangesAsync();
+
+            return Ok(ApiResponse<User>.SuccessResponse(user, "اطلاعات کاربر با موفقیت به‌روزرسانی شد."));
+        }
+
+        [HttpPut("drivers/{driverId}")]
+        public async Task<ActionResult<ApiResponse<Driver>>> UpdateDriver(Guid driverId, [FromBody] UpdateDriverByAdminDto dto)
+        {
+            var driver = await _context.Drivers.FindAsync(driverId);
+            if (driver == null)
+            {
+                return NotFound(ApiResponse<Driver>.ErrorResponse("راننده یافت نشد."));
+            }
+
+            driver.IsActive = dto.IsActive;
+            driver.CommissionPercentage = dto.CommissionPercentage;
+            driver.AdminNote = dto.AdminNote;
+
+            _context.Drivers.Update(driver);
+            await _context.SaveChangesAsync();
+
+            return Ok(ApiResponse<Driver>.SuccessResponse(driver, "اطلاعات راننده با موفقیت به‌روزرسانی شد."));
+        }
     }
 }

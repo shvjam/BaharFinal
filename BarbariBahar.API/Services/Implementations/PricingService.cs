@@ -21,10 +21,48 @@ namespace BarbariBahar.API.Services.Implementations
             _context = context;
         }
 
-        public async Task<decimal> CalculateOrderPriceAsync(CreateOrderDto orderDto)
+        public async Task<(decimal finalPrice, decimal discountAmount)> CalculateOrderPriceAsync(CreateOrderDto orderDto)
         {
             var breakdown = await GetPriceBreakdownAsync(orderDto);
-            return breakdown.Sum(item => item.TotalPrice);
+            var totalPrice = breakdown.Sum(item => item.TotalPrice);
+            decimal discountAmount = 0;
+
+            if (!string.IsNullOrEmpty(orderDto.DiscountCode))
+            {
+                var discountCode = await _context.DiscountCodes
+                    .FirstOrDefaultAsync(dc => dc.Code.ToUpper() == orderDto.DiscountCode.ToUpper());
+
+                if (IsDiscountCodeValid(discountCode, totalPrice))
+                {
+                    if (discountCode.Type == "PERCENTAGE")
+                    {
+                        discountAmount = (totalPrice * discountCode.Value) / 100;
+                        if (discountCode.MaxDiscount.HasValue && discountAmount > discountCode.MaxDiscount.Value)
+                        {
+                            discountAmount = discountCode.MaxDiscount.Value;
+                        }
+                    }
+                    else // FIXED
+                    {
+                        discountAmount = discountCode.Value;
+                    }
+                }
+            }
+
+            var finalPrice = totalPrice - discountAmount;
+            return (finalPrice > 0 ? finalPrice : 0, discountAmount);
+        }
+
+        private bool IsDiscountCodeValid(DiscountCode discountCode, decimal orderAmount)
+        {
+            if (discountCode == null) return false;
+            if (!discountCode.IsActive) return false;
+            if (discountCode.StartDate.HasValue && discountCode.StartDate.Value > DateTime.UtcNow) return false;
+            if (discountCode.EndDate.HasValue && discountCode.EndDate.Value < DateTime.UtcNow) return false;
+            if (discountCode.UsageLimit.HasValue && discountCode.UsageCount >= discountCode.UsageLimit.Value) return false;
+            if (discountCode.MinOrderAmount.HasValue && orderAmount < discountCode.MinOrderAmount.Value) return false;
+
+            return true;
         }
 
         public async Task<List<PriceBreakdownDto>> GetPriceBreakdownAsync(CreateOrderDto orderDto)

@@ -7,7 +7,7 @@ namespace BarbariBahar.API.Services.Interfaces
 {
     public interface IPricingService
     {
-        Task<decimal> CalculateOrderPriceAsync(CreateOrderDto orderDto);
+        Task<(decimal finalPrice, decimal discountAmount)> CalculateOrderPriceAsync(CreateOrderDto orderDto);
         Task<List<PriceBreakdownDto>> GetPriceBreakdownAsync(CreateOrderDto orderDto);
     }
 }

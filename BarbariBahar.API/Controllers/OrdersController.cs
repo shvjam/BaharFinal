@@ -36,6 +36,9 @@ namespace BarbariBahar.API.Controllers
         [HttpPost]
         public async Task<ActionResult<ApiResponse<Order>>> CreateOrder([FromBody] CreateOrderDto dto)
         {
+            // Calculate price and discount first
+            var (estimatedPrice, discountAmount) = await _pricingService.CalculateOrderPriceAsync(dto);
+
             var order = new Order
             {
                 CustomerPhone = dto.CustomerPhone,
@@ -49,10 +52,11 @@ namespace BarbariBahar.API.Controllers
                 DestinationAddressJson = JsonConvert.SerializeObject(dto.DestinationAddress),
                 StopsJson = dto.Stops != null ? JsonConvert.SerializeObject(dto.Stops) : null,
                 DetailsJson = JsonConvert.SerializeObject(dto.Details),
-                CustomerNote = dto.CustomerNote
+                CustomerNote = dto.CustomerNote,
+                EstimatedPrice = estimatedPrice,
+                DiscountAmount = discountAmount,
+                DiscountCode = !string.IsNullOrEmpty(dto.DiscountCode) && discountAmount > 0 ? dto.DiscountCode.ToUpper() : null
             };
-
-            order.EstimatedPrice = await _pricingService.CalculateOrderPriceAsync(dto);
 
             if (User.Identity?.IsAuthenticated == true)
             {
