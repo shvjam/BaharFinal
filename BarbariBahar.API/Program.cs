@@ -20,6 +20,8 @@ var builder = WebApplication.CreateBuilder(args);
 // Configure Settings
 builder.Services.Configure<FarazSmsSettings>(
     builder.Configuration.GetSection(FarazSmsSettings.SectionName));
+builder.Services.Configure<ZarinpalSettings>(
+    builder.Configuration.GetSection(ZarinpalSettings.SectionName));
 
 // Add services to the container.
 
@@ -70,6 +72,15 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IFileService, FileService>();
 builder.Services.AddScoped<IPricingService, PricingService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
+
+builder.Services.AddHttpClient("Zarinpal", (serviceProvider, client) =>
+{
+    var zarinpalSettings = serviceProvider.GetRequiredService<IOptions<ZarinpalSettings>>().Value;
+    client.BaseAddress = new Uri(zarinpalSettings.IsSandbox
+        ? "https://sandbox.zarinpal.com/pg/rest/WebGate/"
+        : "https://api.zarinpal.com/pg/v4/payment/");
+});
 
 // SignalR
 builder.Services.AddSignalR();

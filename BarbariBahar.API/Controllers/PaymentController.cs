@@ -1,13 +1,10 @@
-using System;
-using System.Security.Claims;
 using System.Threading.Tasks;
-using BarbariBahar.API.Data;
 using BarbariBahar.API.DTOs.Common;
-using BarbariBahar.API.Enums;
-using BarbariBahar.API.Models;
+using BarbariBahar.API.DTOs.Payment;
+using BarbariBahar.API.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace BarbariBahar.API.Controllers
 {
@@ -16,46 +13,39 @@ namespace BarbariBahar.API.Controllers
     [Authorize]
     public class PaymentController : ControllerBase
     {
-        private readonly AppDbContext _context;
+        private readonly IPaymentService _paymentService;
+        private readonly IConfiguration _configuration;
 
-        public PaymentController(AppDbContext context)
+        public PaymentController(IPaymentService paymentService, IConfiguration configuration)
         {
-            _context = context;
+            _paymentService = paymentService;
+            _configuration = configuration;
         }
 
-        // POST: api/payment/{orderId}
-        [HttpPost("{orderId}")]
-        public async Task<ActionResult<ApiResponse<Payment>>> CreatePayment(Guid orderId)
+        [HttpPost("request")]
+        public async Task<ActionResult<ApiResponse<string>>> RequestPayment([FromBody] PaymentRequestDto dto)
         {
-            var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-            var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == orderId && o.CustomerId == userId);
+            // The callback URL should be configured in appsettings.json for different environments
+            var callbackUrl = _configuration.GetValue<string>("ZarinpalSettings:CallbackUrl")
+                              ?? "https://localhost:5001/api/payment/verify";
 
-            if (order == null)
-            {
-                return NotFound(ApiResponse<Payment>.ErrorResponse("سفارش یافت نشد یا متعلق به شما نیست."));
-            }
+            var paymentUrl = await _paymentService.RequestPayment(dto.OrderId, callbackUrl);
 
-            if (order.Payment != null)
-            {
-                return BadRequest(ApiResponse<Payment>.ErrorResponse("برای این سفارش قبلاً پرداخت ایجاد شده است."));
-            }
+            return Ok(ApiResponse<string>.SuccessResponse(paymentUrl, "Payment URL generated successfully."));
+        }
 
-            var amount = order.FinalPrice ?? order.EstimatedPrice;
+        // The verification endpoint will be added in the next step
+        [HttpGet("verify")]
+        public async Task<IActionResult> VerifyPayment([FromQuery] string authority, [FromQuery] string status)
+        {
+            var verificationResult = await _paymentService.VerifyPayment(authority, status);
 
-            var payment = new Payment
-            {
-                OrderId = order.Id,
-                Amount = amount,
-                Status = PaymentStatus.PENDING,
-                Method = PaymentMethod.ONLINE // Defaulting to online
-            };
+            var frontendUrl = _configuration.GetValue<string>("FrontendUrl") ?? "http://localhost:5173";
 
-            await _context.Payments.AddAsync(payment);
-            await _context.SaveChangesAsync();
+            // Redirect user to the frontend with the result
+            var redirectUrl = $"{frontendUrl}/payment/result?success={verificationResult.IsSuccess}&orderId={verificationResult.OrderId}&refId={verificationResult.RefId}";
 
-            // TODO: Redirect user to a payment gateway
-
-            return Ok(ApiResponse<Payment>.SuccessResponse(payment, "رکورد پرداخت با موفقیت ایجاد شد."));
+            return Redirect(redirectUrl);
         }
     }
 }
