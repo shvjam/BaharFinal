@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using BarbariBahar.API.Data;
+using BarbariBahar.API.DTOs.Admin;
 using BarbariBahar.API.DTOs.Common;
 using BarbariBahar.API.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -41,7 +43,6 @@ namespace BarbariBahar.API.Controllers
                 CreatedAt = DateTime.UtcNow
             };
 
-            // If this new config is active, deactivate all others
             if (pricingConfig.IsActive)
             {
                 var allOtherConfigs = await _context.PricingConfigs.Where(p => p.IsActive).ToListAsync();
@@ -96,7 +97,6 @@ namespace BarbariBahar.API.Controllers
             config.ExpertVisitFee = dto.ExpertVisitFee;
             config.IsActive = dto.IsActive;
 
-            // If this config is being activated, deactivate all others
             if (config.IsActive)
             {
                 var allOtherConfigs = await _context.PricingConfigs.Where(p => p.Id != id && p.IsActive).ToListAsync();

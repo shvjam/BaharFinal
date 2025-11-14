@@ -13,6 +13,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
 using BarbariBahar.API.Services.Interfaces;
+using BarbariBahar.API.Helpers;
+using Newtonsoft.Json;
+using BarbariBahar.API.DTOs.Order;
+using AutoMapper;
 
 namespace BarbariBahar.API.Controllers
 {
@@ -24,12 +28,14 @@ namespace BarbariBahar.API.Controllers
         private readonly AppDbContext _context;
         private readonly IFileService _fileService;
         private readonly INotificationService _notificationService;
+        private readonly IMapper _mapper;
 
-        public DriversController(AppDbContext context, IFileService fileService, INotificationService notificationService)
+        public DriversController(AppDbContext context, IFileService fileService, INotificationService notificationService, IMapper mapper)
         {
             _context = context;
             _fileService = fileService;
             _notificationService = notificationService;
+            _mapper = mapper;
         }
 
         [HttpPatch("status")]
@@ -52,9 +58,11 @@ namespace BarbariBahar.API.Controllers
                 driver.IsOnline = dto.IsOnline.Value;
             }
 
-            if (dto.IsActive.HasValue)
+            if (dto.CurrentLat.HasValue && dto.CurrentLng.HasValue)
             {
-                driver.IsActive = dto.IsActive.Value;
+                driver.CurrentLat = dto.CurrentLat;
+                driver.CurrentLng = dto.CurrentLng;
+                driver.LastLocationUpdate = DateTime.UtcNow;
             }
 
             _context.Drivers.Update(driver);
@@ -64,21 +72,45 @@ namespace BarbariBahar.API.Controllers
         }
 
         [HttpGet("available-orders")]
-        public async Task<ActionResult<ApiResponse<List<Order>>>> GetAvailableOrders()
+        public async Task<ActionResult<ApiResponse<List<OrderResponseDto>>>> GetAvailableOrders()
         {
             var driverUserId = GetCurrentUserId();
             var driver = await _context.Drivers.FindAsync(driverUserId.Value);
-            if (driver == null || !driver.IsActive || !driver.IsOnline)
+
+            if (driver == null || !driver.IsActive || !driver.IsOnline || !driver.CurrentLat.HasValue || !driver.CurrentLng.HasValue)
             {
-                return Ok(ApiResponse<List<Order>>.SuccessResponse(new List<Order>(), "You are not active or online."));
+                return Ok(ApiResponse<List<OrderResponseDto>>.SuccessResponse(new List<OrderResponseDto>(), "You are not active, online, or your location is not set."));
             }
 
             var availableOrders = await _context.Orders
                 .Where(o => o.Status == OrderStatus.CONFIRMED && o.DriverId == null)
-                .OrderByDescending(o => o.CreatedAt)
                 .ToListAsync();
 
-            return Ok(ApiResponse<List<Order>>.SuccessResponse(availableOrders));
+            var filteredAndSortedOrders = availableOrders
+                .Select(order =>
+                {
+                    var details = JsonConvert.DeserializeObject<OrderDetailsDto>(order.DetailsJson);
+                    var originAddress = JsonConvert.DeserializeObject<CreateOrderAddressDto>(order.OriginAddressJson);
+                    return new
+                    {
+                        Order = order,
+                        VehicleType = Enum.TryParse<VehicleType>(details.VehicleType, true, out var vt) ? vt : (VehicleType?)null,
+                        OriginLat = originAddress.Lat,
+                        OriginLng = originAddress.Lng
+                    };
+                })
+                .Where(o => o.VehicleType.HasValue && o.VehicleType.Value == driver.VehicleType)
+                .Select(o => new
+                {
+                    Order = o.Order,
+                    Distance = DistanceCalculator.CalculateDistance(driver.CurrentLat.Value, driver.CurrentLng.Value, o.OriginLat, o.OriginLng)
+                })
+                .OrderBy(o => o.Distance)
+                .Select(o => o.Order)
+                .ToList();
+
+            var orderDtos = _mapper.Map<List<OrderResponseDto>>(filteredAndSortedOrders);
+            return Ok(ApiResponse<List<OrderResponseDto>>.SuccessResponse(orderDtos));
         }
 
         [HttpPost("orders/{orderId}/accept")]

@@ -2,6 +2,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using BarbariBahar.API.Data;
 using BarbariBahar.API.DTOs.Common;
+using BarbariBahar.API.DTOs.Admin;
+using BarbariBahar.API.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;

@@ -2,9 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using AutoMapper;
 using BarbariBahar.API.Data;
 using BarbariBahar.API.DTOs.Admin;
 using BarbariBahar.API.DTOs.Common;
+using BarbariBahar.API.DTOs.Driver;
+using BarbariBahar.API.DTOs.Order;
 using BarbariBahar.API.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -26,7 +29,6 @@ namespace BarbariBahar.API.Controllers
             _mapper = mapper;
         }
 
-        // GET: api/admin/users
         [HttpGet("users")]
         public async Task<ActionResult<ApiResponse<List<User>>>> GetAllUsers()
         {
@@ -34,7 +36,6 @@ namespace BarbariBahar.API.Controllers
             return Ok(ApiResponse<List<User>>.SuccessResponse(users));
         }
 
-        // GET: api/admin/drivers
         [HttpGet("drivers")]
         public async Task<ActionResult<ApiResponse<List<DriverResponseDto>>>> GetAllDrivers()
         {
@@ -47,7 +48,6 @@ namespace BarbariBahar.API.Controllers
             return Ok(ApiResponse<List<DriverResponseDto>>.SuccessResponse(driverDtos));
         }
 
-        // POST: api/admin/drivers/{id}/verify
         [HttpPost("drivers/{id}/verify")]
         public async Task<ActionResult<ApiResponse<string>>> VerifyDriver(Guid id)
         {
@@ -64,12 +64,10 @@ namespace BarbariBahar.API.Controllers
 
             driver.DocumentsVerified = true;
             driver.VerifiedAt = DateTime.UtcNow;
-            driver.IsActive = true; // Automatically activate the driver upon verification
+            driver.IsActive = true;
 
             _context.Drivers.Update(driver);
             await _context.SaveChangesAsync();
-
-            // TODO: Send a notification to the driver.
 
             return Ok(ApiResponse<string>.SuccessResponse(null, "مدارک راننده با موفقیت تأیید شد و حساب کاربری فعال گردید."));
         }
@@ -93,7 +91,6 @@ namespace BarbariBahar.API.Controllers
         [HttpGet("drivers/{driverId}")]
         public async Task<ActionResult<ApiResponse<DriverResponseDto>>> GetDriverById(Guid driverId)
         {
-            // Note: driverId is the same as userId
             var driver = await _context.Drivers
                 .Include(d => d.User)
                 .FirstOrDefaultAsync(d => d.UserId == driverId);
@@ -151,7 +148,6 @@ namespace BarbariBahar.API.Controllers
                 .Include(o => o.ServiceCategory)
                 .AsQueryable();
 
-            // Filtering
             if (query.Status.HasValue)
             {
                 queryable = queryable.Where(o => o.Status == query.Status.Value);
@@ -161,10 +157,8 @@ namespace BarbariBahar.API.Controllers
                 queryable = queryable.Where(o => o.CustomerPhone.Contains(query.CustomerPhone));
             }
 
-            // Get total count for pagination
             var totalCount = await queryable.CountAsync();
 
-            // Pagination
             var orders = await queryable
                 .OrderByDescending(o => o.CreatedAt)
                 .Skip((query.Page - 1) * query.PageSize)

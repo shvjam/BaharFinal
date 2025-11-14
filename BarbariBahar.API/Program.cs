@@ -14,8 +14,23 @@ using BarbariBahar.API.Services.Interfaces;
 using FluentValidation.AspNetCore;
 using System.Reflection;
 using BarbariBahar.API.Configurations;
+using Microsoft.Extensions.Options;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// --- Serilog Configuration ---
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration)
+    .Enrich.FromLogContext()
+    .WriteTo.Console()
+    .CreateBootstrapLogger();
+
+builder.Host.UseSerilog((context, services, configuration) => configuration
+    .ReadFrom.Configuration(context.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext());
+// --- End Serilog Configuration ---
 
 // Configure Settings
 builder.Services.Configure<FarazSmsSettings>(
@@ -25,9 +40,18 @@ builder.Services.Configure<ZarinpalSettings>(
 
 // Add services to the container.
 
-// Database
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("SqliteConnection")));
+// Database Configuration
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddDbContext<AppDbContext>(options =>
+        options.UseSqlite(builder.Configuration.GetConnectionString("SqliteConnection")));
+}
+else
+{
+    builder.Services.AddDbContext<AppDbContext>(options =>
+        options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+}
+
 
 // JWT Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -140,6 +164,10 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
+
+// --- Use Serilog Request Logging ---
+app.UseSerilogRequestLogging();
+// --- End Serilog ---
 
 // Seed Data
 using (var scope = app.Services.CreateScope())

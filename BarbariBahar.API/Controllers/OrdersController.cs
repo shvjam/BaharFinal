@@ -3,17 +3,18 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using AutoMapper;
 using BarbariBahar.API.Data;
+using BarbariBahar.API.DTOs.Admin;
 using BarbariBahar.API.DTOs.Common;
 using BarbariBahar.API.DTOs.Order;
 using BarbariBahar.API.Enums;
 using BarbariBahar.API.Models;
 using BarbariBahar.API.Services.Interfaces;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
-using BarbariBahar.API.DTOs.Admin;
 
 namespace BarbariBahar.API.Controllers
 {
@@ -34,11 +35,9 @@ namespace BarbariBahar.API.Controllers
             _mapper = mapper;
         }
 
-        // POST: api/orders
         [HttpPost]
         public async Task<ActionResult<ApiResponse<Order>>> CreateOrder([FromBody] CreateOrderDto dto)
         {
-            // Calculate price and discount first
             var (estimatedPrice, discountAmount) = await _pricingService.CalculateOrderPriceAsync(dto);
 
             var order = new Order
@@ -97,7 +96,7 @@ namespace BarbariBahar.API.Controllers
                 var packingService = new PackingService
                 {
                     OrderId = order.Id,
-                        Type = dto.PackingService.Type,
+                    Type = dto.PackingService.Type,
                     MaleWorkers = dto.PackingService.MaleWorkers,
                     FemaleWorkers = dto.PackingService.FemaleWorkers,
                     EstimatedHours = dto.PackingService.EstimatedHours,
@@ -129,7 +128,6 @@ namespace BarbariBahar.API.Controllers
             return Ok(ApiResponse<Order>.SuccessResponse(order, "سفارش با موفقیت ثبت شد"));
         }
 
-        // GET: api/orders/my-orders
         [Authorize(Roles = "CUSTOMER")]
         [HttpGet("my-orders")]
         public async Task<ActionResult<ApiResponse<List<OrderResponseDto>>>> GetMyOrders()
@@ -146,7 +144,6 @@ namespace BarbariBahar.API.Controllers
             return Ok(ApiResponse<List<OrderResponseDto>>.SuccessResponse(orderDtos));
         }
 
-        // GET: api/orders/{id}
         [Authorize]
         [HttpGet("{id}")]
         public async Task<ActionResult<ApiResponse<OrderResponseDto>>> GetOrderById(Guid id)
@@ -167,7 +164,6 @@ namespace BarbariBahar.API.Controllers
             return Ok(ApiResponse<OrderResponseDto>.SuccessResponse(orderDto));
         }
 
-        // POST: api/orders/{id}/assign-driver
         [Authorize(Roles = "ADMIN")]
         [HttpPost("{id}/assign-driver")]
         public async Task<ActionResult<ApiResponse<DriverAssignment>>> AssignDriver(Guid id, [FromBody] AssignDriverDto dto)
@@ -199,7 +195,6 @@ namespace BarbariBahar.API.Controllers
             await _context.DriverAssignments.AddAsync(assignment);
             await _context.SaveChangesAsync();
 
-            // Notify Driver
             await _notificationService.SendNotificationAsync(
                 driver.UserId,
                 "INFO",
@@ -208,7 +203,6 @@ namespace BarbariBahar.API.Controllers
                 new { orderId = order.Id }
             );
 
-            // Notify Customer
             if (order.CustomerId.HasValue)
             {
                 await _notificationService.SendNotificationAsync(
@@ -223,7 +217,6 @@ namespace BarbariBahar.API.Controllers
             return Ok(ApiResponse<DriverAssignment>.SuccessResponse(assignment, "راننده با موفقیت به سفارش اختصاص یافت."));
         }
 
-        // PATCH: api/orders/{id}/status
         [Authorize(Roles = "ADMIN,DRIVER")]
         [HttpPatch("{id}/status")]
         public async Task<ActionResult<ApiResponse<string>>> UpdateOrderStatus(Guid id, [FromBody] UpdateOrderStatusDto dto)
@@ -280,7 +273,6 @@ namespace BarbariBahar.API.Controllers
             _context.Orders.Update(order);
             await _context.SaveChangesAsync();
 
-            // Notify Customer of status change
             if (order.CustomerId.HasValue)
             {
                 await _notificationService.SendNotificationAsync(

@@ -27,4 +27,11 @@ namespace BarbariBahar.API.DTOs.Driver
         public DateTime CreatedAt { get; set; }
         public ICollection<DriverAssignment> Assignments { get; set; } = new List<DriverAssignment>();
     }
+
+    public class UpdateDriverStatusDto
+    {
+        public bool? IsOnline { get; set; }
+        public double? CurrentLat { get; set; }
+        public double? CurrentLng { get; set; }
+    }
 }

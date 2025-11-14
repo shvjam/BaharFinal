@@ -44,7 +44,7 @@ namespace BarbariBahar.API.DTOs.Order
         public PackingServiceResponseDto? PackingService { get; set; }
         public LocationDetails? LocationDetails { get; set; }
         public DriverAssignment? DriverAssignment { get; set; }
-        public Payment? Payment { get; set; }
+        public Models.Payment? Payment { get; set; }
     }
 
     // DTO for PackingService inside OrderResponseDto

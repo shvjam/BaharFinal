@@ -7,5 +7,8 @@ namespace BarbariBahar.API.DTOs.Admin
     {
         [Required]
         public Guid DriverId { get; set; }
+
+        [MaxLength(500)]
+        public string? Note { get; set; }
     }
 }

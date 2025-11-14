@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BarbariBahar.API", "BarbariBahar.API\BarbariBahar.API.csproj", "{18A3FC8C-0F1A-4FFA-B288-6505DA1811DA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BarbariBahar.Tests", "BarbariBahar.Tests\BarbariBahar.Tests.csproj", "{5A42553A-D81C-4D83-AB8C-7CCB410BCCEF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +20,9 @@ Global
 		{18A3FC8C-0F1A-4FFA-B288-6505DA1811DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{18A3FC8C-0F1A-4FFA-B288-6505DA1811DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{18A3FC8C-0F1A-4FFA-B288-6505DA1811DA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5A42553A-D81C-4D83-AB8C-7CCB410BCCEF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5A42553A-D81C-4D83-AB8C-7CCB410BCCEF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5A42553A-D81C-4D83-AB8C-7CCB410BCCEF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5A42553A-D81C-4D83-AB8C-7CCB410BCCEF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
